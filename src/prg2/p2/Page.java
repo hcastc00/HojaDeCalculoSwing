@@ -1,23 +1,14 @@
 package prg2.p2;
 
-import java.util.Scanner;
+import java.util.Arrays;
 
 public class Page {
-
-    public int getRows() {
-        return rows;
-    }
-
-    public int getColumns() {
-        return columns;
-    }
-
     private int rows;
     private int columns;
     private String input;
-    private String[][] cells;
+    String[][] cells;
     private boolean[][] isFormula;
-    private int[][] solution;
+    int[][] solution;
 
     /*
     Constructor de la pagina
@@ -31,8 +22,18 @@ public class Page {
         this.columns = columns;
         this.input = input;
         this.cells = new String[rows][columns];
+        this.solution = new int[rows][columns];
+        this.isFormula = new boolean[rows][columns];
+
+        for (int y = 0; y < this.rows; y++) {
+            for (int x = 0; x < this.columns; x++) {
+                this.isFormula[y][x] = false;
+                }
+            }
+
         checkSize();
         readCells();
+        getFormulas();
     }
 
     /*
@@ -65,7 +66,7 @@ public class Page {
             }
             printMat(this.cells);
         }catch(Exception e){
-            UI.showError("Input does not match given size");
+            UI.showError("ERROR IN THE TABLE");
         }
     }
 
@@ -81,6 +82,7 @@ public class Page {
                 }
             }
         }
+        System.out.println(Arrays.deepToString(isFormula));;
     }
 
     public void solve() {
@@ -95,6 +97,7 @@ public class Page {
                 }
             }
         }catch (Exception e){
+            e.printStackTrace();
             UI.showError("Invalid value in cell");
         }
         //Luego resuelvo las formulas
@@ -109,7 +112,7 @@ public class Page {
                 }
             }
         }catch(Exception e){
-            UI.showError("Invalid formula");
+            UI.showError("Invalid formula in the table");
         }
         //printMat(solution);
     }

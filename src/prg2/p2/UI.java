@@ -4,7 +4,6 @@ import javax.swing.*;
 import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.awt.event.*;
-import java.beans.PropertyChangeListener;
 import java.io.*;
 
 public class UI extends JPanel {
@@ -27,7 +26,9 @@ public class UI extends JPanel {
     static JFileChooser explorer = new JFileChooser();
 
     public static void main(String[] args){
-        if(!isLoaded) getTableSize();
+        if(!isLoaded){
+            getTableSize();
+        }
         showPage();
 
     }
@@ -53,9 +54,7 @@ public class UI extends JPanel {
         nuevo.addActionListener(new ActionListener() {
             @Override
             public void actionPerformed(ActionEvent actionEvent) {
-                isLoaded = false;
-                window.dispose();
-                UI.main(null);
+                newPage();
             }
         });
 
@@ -83,11 +82,20 @@ public class UI extends JPanel {
         rehacer = new JMenuItem("Rehacer");
     }
 
+    private static void newPage() {
+        isLoaded = false;
+        window.dispose();
+        UI.main(null);
+    }
+
     private static void solveTable() {
-
-        String table = tableToString();
-        Page page = new Page(rows,columns,table);
-
+        page = new Page(rows,columns,tableToString());
+        page.solve();
+        for (int i=0;i<table.getRowCount();i++){
+            for (int j=1; j<table.getColumnCount();j++){
+                table.setValueAt(page.solution[i][j-1],i,j);
+            }
+        }
 
     }
 
@@ -185,7 +193,7 @@ public class UI extends JPanel {
     private static void saveTable() throws IOException {
         explorer.setDialogTitle("Guardar Archivo");
         File fileToSave = null;
-        StringBuffer data = new StringBuffer();
+        StringBuilder data = new StringBuilder();
 
         data.append(rows).append(" ").append(columns).append("\n");
         System.out.println(tableToString());
@@ -237,7 +245,7 @@ public class UI extends JPanel {
     private static void loadTable(){
         explorer.setDialogTitle("Cargar Archivo");
         File fileToLoad = null;
-        StringBuffer file = new StringBuffer();
+        StringBuilder cells = new StringBuilder();
         isLoaded = true;
 
         int userSelection = explorer.showOpenDialog(window);
@@ -251,18 +259,34 @@ public class UI extends JPanel {
             assert fileToLoad != null;
             FileReader fr = new FileReader(fileToLoad);
             BufferedReader br = new BufferedReader(fr);
+            cells = new StringBuilder();
 
             rows = br.read()-48; //ACII to number
             br.skip(1); //Skips space char
             columns = br.read()-48;
+            br.skip(1); //Skips \n at the end of rows and columns
 
             while(br.ready()){
-                System.out.println(br.readLine());
+                cells.append(br.readLine()).append("\n");
             }
-
+            
         }catch(Exception e){
+            e.printStackTrace();
             showError("Error while reading");
         }
+
+        System.out.println(cells);
+        page = new Page(rows,columns,cells.toString());
+
+        window.dispose();
+        UI.main(null); //Reinicia
+
+        for (int i=0;i<table.getRowCount();i++){
+            for (int j=1; j<table.getColumnCount();j++){
+                table.setValueAt(page.cells[i][j-1],i,j);
+            }
+        }
+
     }
 
     private static void getClickedCell(){
@@ -273,7 +297,7 @@ public class UI extends JPanel {
 
     public static void showError(String error){
         JOptionPane.showMessageDialog(null,error,"",JOptionPane.ERROR_MESSAGE);
-        System.exit(-1);
+        //System.exit(-1);
     }
 }
 
