@@ -1,15 +1,26 @@
 package prg2.p2;
 
 import javax.swing.*;
+import javax.swing.event.TableModelEvent;
+import javax.swing.event.TableModelListener;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableColumnModel;
 import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableCellRenderer;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.*;
+import java.util.LinkedList;
+
+import static javax.swing.ListSelectionModel.SINGLE_SELECTION;
 
 public class UI extends JPanel {
     static boolean isLoaded;
+    static boolean isUndo;
     static int rows;
     static int columns;
+    static LinkedList<String> state = new LinkedList<>();
+    static int statePos = 0;
     static Page page;
     static JFrame window;
     static JMenuBar menu;
@@ -18,22 +29,23 @@ public class UI extends JPanel {
     static JMenuItem cargar;
     static JMenuItem nuevo;
     static JMenuItem guardar;
-    static JMenuItem deshacer ;
+    static JMenuItem deshacer;
     static JMenuItem rehacer;
     static JTable table;
     static JButton solve;
     static JLabel cell;
     static JFileChooser explorer = new JFileChooser();
 
-    public static void main(String[] args){
-        if(!isLoaded){
+    public static void main(String[] args) {
+        if (!isLoaded) {
             getTableSize();
         }
         showPage();
+        state.add(tableToString());
 
     }
 
-    private static void initializeElements(){
+    private static void initializeElements() {
         menu = new JMenuBar();
 
         archivo = new JMenu("Archivo");
@@ -42,84 +54,92 @@ public class UI extends JPanel {
         cell = new JLabel();
 
         solve = new JButton("=");
-        solve.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                solveTable();
-            }
-        });
+        solve.addActionListener(actionEvent -> solveTable());
 
         nuevo = new JMenuItem("Nuevo Archivo");
 
-        nuevo.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                newPage();
-            }
-        });
+        nuevo.setAccelerator(KeyStroke.getKeyStroke("control N"));
+        nuevo.addActionListener(actionEvent -> newPage());
 
         cargar = new JMenuItem("Cargar");
-        cargar.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                loadTable();
-            }
-        });
+        cargar.setAccelerator(KeyStroke.getKeyStroke("control L"));
+        cargar.addActionListener(actionEvent -> loadTable());
 
         guardar = new JMenuItem("Guardar");
-        guardar.addActionListener(new ActionListener() {
-            @Override
-            public void actionPerformed(ActionEvent actionEvent) {
-                try {
-                    saveTable();
-                } catch (IOException e) {
-                    showError("Error while saving");
-                }
+        guardar.setAccelerator(KeyStroke.getKeyStroke("control S"));
+        guardar.addActionListener(actionEvent -> {
+            try {
+                saveTable();
+            } catch (IOException e) {
+                showError("Error while saving");
             }
         });
 
         deshacer = new JMenuItem("Deshacer");
+        deshacer.setAccelerator(KeyStroke.getKeyStroke("control Z"));
+        deshacer.addActionListener(actionEvent -> undo());
         rehacer = new JMenuItem("Rehacer");
+        rehacer.setAccelerator(KeyStroke.getKeyStroke("control y"));
+        rehacer.addActionListener(actionEvent -> redo());
     }
 
     private static void newPage() {
         isLoaded = false;
+        state.clear();
+        statePos = 0;
         window.dispose();
+        columns = 0;
+        rows = 0;
         UI.main(null);
     }
 
     private static void solveTable() {
-        page = new Page(rows,columns,tableToString());
+        page = new Page(rows, columns, tableToString());
         page.solve();
-        for (int i=0;i<table.getRowCount();i++){
-            for (int j=1; j<table.getColumnCount();j++){
-                table.setValueAt(page.solution[i][j-1],i,j);
+        for (int i = 0; i < table.getRowCount(); i++) {
+            for (int j = 1; j < table.getColumnCount(); j++) {
+                isUndo = true;
+                table.setValueAt(page.solution[i][j - 1], i, j);
             }
         }
 
+        state.add(tableToString());
+        statePos++;
     }
 
     private static void getTableSize() {
-        try {
-            rows = Integer.parseInt(JOptionPane.showInputDialog("Filas:"));
-        } catch (Exception e) {
-            showError("Error parsing number, please introduce a valid number value");
-        }
+        while(rows<=0 || columns<=0 || rows>=99 || columns>18278) {
+            try {
+                columns = Integer.parseInt(JOptionPane.showInputDialog("Columnas:"));
+            } catch (Exception e) {
+                System.err.println("Please introduce a valid value");
+                System.exit(-1);
+            }
 
-        try {
-            columns = Integer.parseInt(JOptionPane.showInputDialog("Columnas:"));
-        } catch (Exception e) {
-            System.err.println("Invalid input");
+            try {
+                rows = Integer.parseInt(JOptionPane.showInputDialog("Filas:"));
+            } catch (Exception e) {
+                showError("Please introduce a valid value");
+                System.exit(-1);
+            }
+
+            if (rows <= 0 || columns <= 0) {
+                showError("Page too small, must be at least 1x1");
+            }
+
+            if (rows > 999 || columns > 18278) {
+                showError("Page too big, must be max 18278x999");
+            }
         }
     }
 
-    private static void showPage(){
+    private static void showPage() {
         window = new JFrame("Hoja de Cálculo");
-        window.setSize(600,400);
+        window.setSize(600, 400);
         window.setDefaultCloseOperation(WindowConstants.EXIT_ON_CLOSE);
         initializeElements();
-        window.add(cell,BorderLayout.SOUTH);
-        window.add(solve,BorderLayout.NORTH);
+        window.add(cell, BorderLayout.SOUTH);
+        window.add(solve, BorderLayout.NORTH);
         window.setJMenuBar(menu);
         archivo.add(guardar);
         archivo.add(cargar);
@@ -129,65 +149,111 @@ public class UI extends JPanel {
         menu.add(archivo);
         menu.add(editar);
 
-        drawTable(columns,rows);
+        drawTable(columns, rows);
 
         window.setVisible(true);
 
     }
 
-    private static void drawTable(int columns, int rows){
-        DefaultTableModel tm = new DefaultTableModel(rows,columns+1) {
+    private static void drawTable(int columns, int rows) {
+        DefaultTableModel tm = new DefaultTableModel(rows, columns + 1) {
             @Override
             public boolean isCellEditable(int row, int column) {
 
-                if(0 == column)
+                if (0 == column)
                     return false;
-                return super.isCellEditable(row,column);
+                return super.isCellEditable(row, column);
             }
-
-
         };
 
-        for(int  i=0; i<rows; i++)
-            tm.setValueAt(i+1, i, 0);
+        for (int i = 0; i < rows; i++)
+            tm.setValueAt(i + 1, i, 0);
 
         table = new JTable(tm) {
             @Override
             public void changeSelection(int rowIndex, int columnIndex,
                                         boolean toggle, boolean extend) {
-                if(columnIndex == 0)
-                    super.changeSelection(rowIndex, columnIndex+1, toggle, extend);
+                if (columnIndex == 0)
+                    super.changeSelection(rowIndex, columnIndex + 1, toggle, extend);
                 else
                     super.changeSelection(rowIndex, columnIndex, toggle, extend);
             }
+
+            @Override
+            public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
+                Component componenet = super.prepareRenderer(renderer, row, column);
+
+                if(getValueAt(row, column).toString().charAt(0) == '=') {
+                    componenet.setBackground(Color.PINK);
+                }else if(column!=0){
+                    componenet.setBackground(Color.WHITE);
+                }
+
+                return componenet;
+            }
         };
 
-        String[] identifiers = new String[columns+1];
-        for(int i= 1; i<table.getColumnCount();i++){
-            identifiers[i] = table.getColumnName(i-1);
+        String[] identifiers = new String[columns + 1];
+        for (int i = 1; i < table.getColumnCount(); i++) {
+            identifiers[i] = table.getColumnName(i - 1);
         }
         identifiers[0] = "";
+
+        for (int i = 0; i < table.getRowCount(); i++) {
+            for (int j = 1; j < table.getColumnCount(); j++) {
+                table.setValueAt(0, i, j);
+            }
+        }
 
         tm.setColumnIdentifiers(identifiers);
         table.getTableHeader().setReorderingAllowed(false);
         table.getColumnModel().getColumn(0).setCellRenderer(table.getTableHeader().getDefaultRenderer());
-        table.setAutoResizeMode(0);
-        window.add(new JScrollPane(table));
+        table.setRowHeight(50);
 
+        //Alinear texto al centro
+
+        table.setSelectionMode(SINGLE_SELECTION);
+        window.add(new JScrollPane(table),BorderLayout.CENTER);
+
+        //Listeners para indicar la celda
         table.addKeyListener(new KeyAdapter() {
             @Override
             public void keyReleased(KeyEvent e) {
-                getClickedCell();
+                getSelectedCell();
             }
         });
 
         table.addMouseListener(new MouseAdapter() {
             @Override
             public void mouseClicked(MouseEvent e) {
-                getClickedCell();
+                getSelectedCell();
             }
         });
 
+        //Listener para guardar entados
+        table.getModel().addTableModelListener(new TableModelListener() {
+            @Override
+            public void tableChanged(TableModelEvent tableModelEvent) {
+
+                //Cambio hecho a mano (NO UNDO O REDO)
+                if(!isUndo){
+                    //ELIMINA LOS REDO AL HACER UN CAMBIO MANUAL
+                    for(int i = state.size()-statePos-1 ; i>0; i--){
+                        System.out.println(state);
+                        state.removeLast();
+                    }
+                    System.out.println("Cambio manual");
+                    state.add(tableToString());
+                    statePos++;
+
+
+                    System.out.println(state);
+                }else {
+                    isUndo = false;
+                }
+
+            }
+        });
     }
 
     private static void saveTable() throws IOException {
@@ -195,7 +261,7 @@ public class UI extends JPanel {
         File fileToSave = null;
         StringBuilder data = new StringBuilder();
 
-        data.append(rows).append(" ").append(columns).append("\n");
+        data.append(columns).append(" ").append(rows).append("\n");
         System.out.println(tableToString());
         data.append(tableToString());
 
@@ -210,39 +276,38 @@ public class UI extends JPanel {
         assert fileToSave != null;
         FileWriter fw = new FileWriter(fileToSave);
         System.out.println(fw);
-        try{
+        try {
             BufferedWriter bw = new BufferedWriter(fw);
             System.out.println(bw);
             bw.write(data.toString());
             bw.flush();
             bw.close();
-        }
-        catch(Exception e){
+        } catch (Exception e) {
             showError("Error while saving");
         }
     }
 
-    private static String tableToString(){
+    private static String tableToString() {
 
         StringBuilder out = new StringBuilder();
 
-        for (int i=0;i<table.getRowCount();i++){
-            for (int j=1; j<table.getColumnCount();j++){
-                if (table.getValueAt(i,j) == null){
+        for (int i = 0; i < table.getRowCount(); i++) {
+            for (int j = 1; j < table.getColumnCount(); j++) {
+                if (table.getValueAt(i, j) == null) {
                     out.append(0);
-                }else{
-                    out.append(table.getValueAt(i,j));
+                } else {
+                    out.append(table.getValueAt(i, j));
                 }
-                if (j == table.getColumnCount()-1) break;
+                if (j == table.getColumnCount() - 1) break;
                 out.append(" ");
             }
-            if (i == table.getRowCount()-1) break;
+            if (i == table.getRowCount() - 1) break;
             out.append("\n");
         }
         return out.toString();
     }
 
-    private static void loadTable(){
+    private static void loadTable() {
         explorer.setDialogTitle("Cargar Archivo");
         File fileToLoad = null;
         StringBuilder cells = new StringBuilder();
@@ -255,49 +320,75 @@ public class UI extends JPanel {
             System.out.println("Load file: " + fileToLoad.getAbsolutePath());
         }
 
-        try{
+        try {
             assert fileToLoad != null;
             FileReader fr = new FileReader(fileToLoad);
             BufferedReader br = new BufferedReader(fr);
             cells = new StringBuilder();
 
-            rows = br.read()-48; //ACII to number
+            columns = br.read() - 48; //ACII to number
             br.skip(1); //Skips space char
-            columns = br.read()-48;
+            rows = br.read() - 48;
             br.skip(1); //Skips \n at the end of rows and columns
 
-            while(br.ready()){
+            while (br.ready()) {
                 cells.append(br.readLine()).append("\n");
             }
-            
-        }catch(Exception e){
+
+        } catch (Exception e) {
             e.printStackTrace();
             showError("Error while reading");
         }
 
         System.out.println(cells);
-        page = new Page(rows,columns,cells.toString());
-
+        page = new Page(rows, columns, cells.toString());
         window.dispose();
-        UI.main(null); //Reinicia
 
-        for (int i=0;i<table.getRowCount();i++){
-            for (int j=1; j<table.getColumnCount();j++){
-                table.setValueAt(page.cells[i][j-1],i,j);
+        isLoaded = false; //Valores por defecto
+        state.clear();
+        statePos = 0;
+        UI.main(null); //Reinicia
+        cellsToTable();
+    }
+
+    private static void cellsToTable() {
+        if(table.isEditing()) table.getCellEditor().stopCellEditing();
+        for (int i = 0; i < table.getRowCount(); i++) {
+            for (int j = 1; j < table.getColumnCount(); j++) {
+                isUndo = true;
+                table.setValueAt(page.cells[i][j - 1], i, j);
             }
         }
-
     }
 
-    private static void getClickedCell(){
+    private static void getSelectedCell() {
         int rowSelected = table.getSelectedRow();
         int colSelected = table.getSelectedColumn();
-        cell.setText("Celda: "+table.getColumnName(colSelected)+(rowSelected+1));
+        cell.setText("Celda: " + table.getColumnName(colSelected) + (rowSelected + 1));
     }
 
-    public static void showError(String error){
-        JOptionPane.showMessageDialog(null,error,"",JOptionPane.ERROR_MESSAGE);
+    private static void undo(){
+        if(statePos>0) {
+            isUndo = true;
+            statePos--;
+            page = new Page(rows, columns, state.get(statePos));
+            cellsToTable();
+        }
+    }
+
+    private static void redo(){
+       if (statePos<state.size()-1) {
+           isUndo = true;
+           statePos++;
+           page = new Page(rows, columns, state.get(statePos));
+           cellsToTable();
+       }
+    }
+
+    public static void showError(String error) {
+        JOptionPane.showMessageDialog(null, error, "", JOptionPane.ERROR_MESSAGE);
         //System.exit(-1);
     }
 }
+
 
